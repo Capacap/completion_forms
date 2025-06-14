@@ -12,3 +12,5 @@ test_template.json
 
 # OS-specific files
 .DS_Store 
+
+.cursorignore
