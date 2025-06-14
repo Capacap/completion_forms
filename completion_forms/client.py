@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Callable, Dict, Optional
 
 from litellm import completion
-from .form import CompletionForm
+from .request import CompletionRequest
 from .exceptions import (
     ClientConfigurationError,
     MaxRetriesExceededError,
@@ -77,7 +77,7 @@ class CompletionClient:
             raise ClientConfigurationError("settings must be an instance of CompletionClientSettings.")
         self.settings = settings
 
-    def complete(self, completion_form: CompletionForm, stream_handler: Callable[[str], None] | None = None) -> Dict[str, Any]:
+    def complete(self, request: CompletionRequest, stream_handler: Callable[[str], None] | None = None) -> Dict[str, Any]:
         """
         Executes a completion request using a formatted CompletionForm.
 
@@ -86,8 +86,8 @@ class CompletionClient:
         both regular and streaming responses.
 
         Args:
-            completion_form: An instance of CompletionForm that has been populated
-                             with data via its `put()` method.
+            request: An instance of CompletionRequest containing the payload
+                     and response parser.
             stream_handler: An optional callable that receives content chunks as
                             they arrive when streaming. If provided, the response
                             will be streamed.
@@ -98,19 +98,17 @@ class CompletionClient:
             returned under the appropriate response key.
 
         Raises:
-            TypeError: If completion_form is not a CompletionForm instance or if
+            TypeError: If request is not a CompletionRequest instance or if
                        stream_handler is not a callable.
             MaxRetriesExceededError: If the request fails after all configured
                                      retries have been attempted.
             ResponseParsingError: If the API response cannot be parsed (e.g.,
                                   invalid JSON).
         """
-        if not isinstance(completion_form, CompletionForm):
-            raise TypeError("completion_form must be an instance of CompletionForm.")
+        if not isinstance(request, CompletionRequest):
+            raise TypeError("request must be an instance of CompletionRequest.")
         if stream_handler is not None and not callable(stream_handler):
             raise TypeError("stream_handler must be a callable or None.")
-        
-        messages, response_format, raw_response_template = completion_form.format()
         
         settings_dict = asdict(self.settings)
         # Pop keys not used by litellm.completion
@@ -119,8 +117,8 @@ class CompletionClient:
 
         completion_kwargs = {
             **settings_dict,
-            "messages": messages,
-            "response_format": response_format,
+            "messages": request.messages,
+            "response_format": request.response_format,
         }
 
         last_exception = None
@@ -140,15 +138,7 @@ class CompletionClient:
                     response_litellm = completion(**completion_kwargs)
                     raw_content = response_litellm.choices[0].message.content.strip()
 
-                if response_format is None:
-                    parsed_response = self._parse_text_response(raw_content, raw_response_template)
-                else:
-                    try:
-                        parsed_response = json.loads(raw_content)
-                    except json.JSONDecodeError as e:
-                        raise ResponseParsingError(f"Failed to decode JSON response: {e}", raw_content)
-                
-                return parsed_response
+                return request.parse_response(raw_content)
 
             except Exception as e:
                 last_exception = e
@@ -161,22 +151,4 @@ class CompletionClient:
                 else:
                     raise MaxRetriesExceededError("Completion failed after all retries.", last_exception)
 
-        raise MaxRetriesExceededError("Completion failed unexpectedly after all retries.", last_exception)
-
-    # Internal/Helper Methods
-    def _parse_text_response(self, raw_content: str, raw_response_template: Dict) -> Dict[str, Any]:
-        """Parses a plain text response, extracting thinking and content parts."""
-        response_key = next(iter(raw_response_template.keys()), None)
-        if not response_key:
-            raise ResponseParsingError("Text response template missing a key.", raw_content)
-
-        # Regex to find content between <think> and </think>
-        thinking_match = re.search(r"<think>(.*?)</think>(.*)", raw_content, re.DOTALL)
-
-        parsed_response = {}
-        if thinking_match:
-            parsed_response["thinking"] = thinking_match.group(1).strip()
-            parsed_response[response_key] = thinking_match.group(2).strip()
-        else:
-            parsed_response[response_key] = raw_content.strip()
-        return parsed_response 
+        raise MaxRetriesExceededError("Completion failed unexpectedly after all retries.", last_exception) 

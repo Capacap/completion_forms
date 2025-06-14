@@ -2,6 +2,7 @@ import os
 import pytest
 from completion_forms import CompletionForm
 from completion_forms.exceptions import FormFileNotFoundError, InvalidValueError
+from completion_forms.request import CompletionRequest
 
 # Define the path to the test file
 TEST_FORM_PATH = os.path.join(os.path.dirname(__file__), "test_forms", "test_form.json")
@@ -34,9 +35,10 @@ def test_from_json_file_with_nested_properties():
     form.put("name", "Alice")
     form.put("age", "30")
 
-    _, response_format, _ = form.format()
+    request = form.create_request()
+    assert isinstance(request, CompletionRequest)
 
-    assert response_format is not None
+    assert request.response_format is not None
     
     expected_schema = {
         "type": "json_schema",
@@ -92,4 +94,4 @@ def test_from_json_file_with_nested_properties():
             }
         }
     }
-    assert response_format == expected_schema 
+    assert request.response_format == expected_schema 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pprint
 import string
 from typing import Dict, List, Union
 
@@ -13,6 +14,7 @@ from .exceptions import (
     InvalidValueError,
     ReservedKeyError,
 )
+from .request import CompletionRequest
 
 
 class CompletionForm:
@@ -121,30 +123,79 @@ class CompletionForm:
             raise InvalidKeyError(f"Invalid key '{key}'. Valid keys are: {self._keys}")
         self._data[key] = value
 
-    def format(self) -> tuple[List[Dict[str, str]], Dict | None, Dict | None]:
+    def create_request(self) -> CompletionRequest:
         """
-        Formats the template with the provided data and prepares it for the API.
+        Creates a CompletionRequest object from the populated form data.
 
-        This method validates that all required keys have been populated with `put()`
-        and then generates the list of messages and the response format schema
-        required by the completion API.
+        This method validates the form data, builds the necessary API payload
+        (messages and response format), and encapsulates them into a
+        CompletionRequest object that is ready to be sent to the API.
 
         Returns:
-            A tuple containing:
-            - A list of message dictionaries for the API.
-            - A dictionary representing the JSON schema for the response format,
-              or None if the response is plain text.
-            - The raw response template dictionary.
+            A CompletionRequest instance containing the formatted request payload
+            and the corresponding response parser.
 
         Raises:
             FormValidationError: If not all required keys have been provided or
                                  if extra, unexpected keys were provided.
         """
         self._validate_data()
+
         messages = self._build_messages()
-        raw_response_template = self._template.get("response", {})
+        response_template = self._template.get("response", {})
         response_format = self._build_response_format()
-        return messages, response_format, raw_response_template
+
+        is_text_response = False
+        if isinstance(response_template, dict):
+            is_text_response = any(
+                isinstance(details, dict) and details.get("type") == "text"
+                for details in response_template.values()
+            )
+
+        template_for_parser = response_template if is_text_response else None
+
+        return CompletionRequest(
+            messages=messages,
+            response_format=response_format,
+            is_text_response=is_text_response,
+            response_template=template_for_parser,
+        )
+
+    def pprint_raw(self) -> None:
+        """Displays the raw, unformatted user/system messages and response format."""
+        print("--- Raw Request ---")
+        for role, content in self._template.items():
+            if role != "response" and isinstance(content, str):
+                print(f"[{role.capitalize()}]")
+                print(content)
+                print()
+
+        print("--- Response Format ---")
+        response_format = self._build_response_format()
+        if response_format:
+            pprint.pprint(response_format)
+        else:
+            pprint.pprint(self._template.get("response", {}))
+        print()
+
+    def pprint_formatted(self) -> None:
+        """Displays the formatted messages and response format after populating the form."""
+        self._validate_data()
+
+        print("--- Formatted Request ---")
+        messages = self._build_messages()
+        for message in messages:
+            print(f"[{message['role'].capitalize()}]")
+            print(message['content'])
+            print()
+
+        print("--- Response Format ---")
+        response_format = self._build_response_format()
+        if response_format:
+            pprint.pprint(response_format)
+        else:
+            pprint.pprint(self._template.get("response", {}))
+        print()
 
     @property
     def keys(self) -> list[str]:

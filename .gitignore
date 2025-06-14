@@ -6,11 +6,26 @@ __pycache__/
 
 # Virtual environment
 venv/
+.venv/
+env/
+.env
 
 # Test artifacts
 test_template.json
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Packaging and installation artifacts
+*.egg-info/
+build/
+dist/
 
 # OS-specific files
-.DS_Store 
+.DS_Store
+
+# IDE-specific files
+.idea/
+.vscode/
 
 .cursorignore
