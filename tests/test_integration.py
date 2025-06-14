@@ -1,5 +1,10 @@
 import json
 import os
+import argparse
+import sys
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from completion_forms import (CompletionClient, CompletionClientSettings,
                               CompletionForm)
@@ -182,9 +187,16 @@ def _test_factory_methods():
             os.remove(test_json_file)
 
 def main():
+    parser = argparse.ArgumentParser(description="Run integration tests for completion_forms.")
+    parser.add_argument("--model", type=str, default="openai/gpt-4.1-nano", help="The model to use for testing.")
+    parser.add_argument("--base_url", type=str, default=None, help="The base URL for the completion API.")
+    parser.add_argument("--api_key", type=str, default=None, help="The API key for the completion API.")
+    args = parser.parse_args()
+
     settings = CompletionClientSettings(
-        model="openai/gpt-4.1-nano",
-        # base_url="http://0.0.0.0:1234/v1"
+        model=args.model,
+        base_url=args.base_url,
+        api_key=args.api_key
     )
     client = CompletionClient(settings)
     
