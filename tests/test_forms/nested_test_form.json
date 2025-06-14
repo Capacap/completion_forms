@@ -1,0 +1,48 @@
+{
+  "system": "You are a helpful assistant that creates user profiles.",
+  "user": "Create a profile for a user named {name} who is {age} years old.",
+  "response": {
+    "user_profile": {
+      "type": "object",
+      "description": "The user's profile information.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The user's name."
+        },
+        "age": {
+          "type": "integer",
+          "description": "The user's age."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata.",
+          "properties": {
+            "source": {
+              "type": "string",
+              "description": "The source of the profile request."
+            }
+          },
+          "required": ["source"]
+        }
+      },
+      "required": ["name", "age", "metadata"]
+    },
+    "aliases": {
+      "type": "array",
+      "description": "A list of aliases for the user.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "alias_name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "required": ["alias_name", "priority"]
+      }
+    }
+  }
+} 

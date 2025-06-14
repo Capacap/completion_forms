@@ -1,0 +1,14 @@
+{
+  "system": "You are a helpful assistant that provides interesting facts.",
+  "user": "My name is {name} and I live in {city}. Please tell me a fact about my city.",
+  "response": {
+    "greeting": {
+      "type": "string",
+      "description": "A personalized greeting that includes the user's name."
+    },
+    "fact": {
+      "type": "string",
+      "description": "An interesting fact about the specified city."
+    }
+  }
+} 
