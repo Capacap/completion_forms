@@ -1,6 +1,24 @@
 [project]
 name = "completion_forms"
 version = "0.1.0"
+authors = [
+  { name="Simon Sorkin", email="simon.sorkin@outlook.com" },
+]
+description = "A lightweight Python utility for creating and managing structured prompts for language model completions."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "litellm==1.72.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/completion_forms"
+"Bug Tracker" = "https://github.com/your-username/completion_forms/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
