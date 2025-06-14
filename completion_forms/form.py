@@ -138,5 +138,4 @@ class CompletionForm:
                     "required": required,
                 },
             },
-            # "strict": True
         } 
