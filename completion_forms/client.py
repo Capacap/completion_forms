@@ -6,8 +6,8 @@ import re
 import time
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Dict, Optional
+import httpx
 
-from litellm import completion
 from .form import CompletionForm
 from .exceptions import (
     ClientConfigurationError,
@@ -15,12 +15,15 @@ from .exceptions import (
     ResponseParsingError,
 )
 
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_COMPLETION_ENDPOINT = "/chat/completions"
+
 
 @dataclass(frozen=True)
 class CompletionClientSettings:
     """Settings for configuring the CompletionClient, with built-in validation."""
     model: str
-    base_url: Optional[str] = None
+    base_url: str = DEFAULT_BASE_URL
     api_key: Optional[str] = None
     max_retries: int = 3
     temperature: float = 0.7
@@ -61,94 +64,96 @@ class CompletionClientSettings:
 class CompletionClient:
     """A client for making requests to a completion API, with retry logic."""
     def __init__(self, settings: CompletionClientSettings):
-        """
-        Initializes the CompletionClient.
-
-        Args:
-            settings: An instance of CompletionClientSettings containing the
-                      configuration for the client (e.g., model, API key, retry
-                      settings).
-
-        Raises:
-            ClientConfigurationError: If the settings object is not a valid
-                                      instance of CompletionClientSettings.
-        """
+        """Initializes the CompletionClient."""
         if not isinstance(settings, CompletionClientSettings):
             raise ClientConfigurationError("settings must be an instance of CompletionClientSettings.")
         self.settings = settings
+        self._client = httpx.Client(
+            base_url=self.settings.base_url,
+            headers={"Authorization": f"Bearer {self.settings.api_key}"},
+            timeout=self.settings.timeout,
+        )
 
     def complete(self, form: CompletionForm, stream_handler: Callable[[str], None] | None = None) -> Dict[str, Any]:
-        """
-        Executes a completion request using a formatted CompletionForm.
-
-        This method sends the formatted request to the completion API, handles
-        retries with exponential backoff, and processes the response. It supports
-        both regular and streaming responses.
-
-        Args:
-            form: An instance of CompletionForm containing the payload
-                     and response parser.
-            stream_handler: An optional callable that receives content chunks as
-                            they arrive when streaming. If provided, the response
-                            will be streamed.
-
-        Returns:
-            A dictionary containing the parsed response from the API. If the
-            response was a JSON object, it's parsed. If it was plain text, it's
-            returned under the appropriate response key.
-
-        Raises:
-            TypeError: If request is not a CompletionRequest instance or if
-                       stream_handler is not a callable.
-            MaxRetriesExceededError: If the request fails after all configured
-                                     retries have been attempted.
-            ResponseParsingError: If the API response cannot be parsed (e.g.,
-                                  invalid JSON).
-        """
+        """Executes a completion request using a formatted CompletionForm."""
         if not isinstance(form, CompletionForm):
             raise TypeError("form must be an instance of CompletionForm.")
         if stream_handler is not None and not callable(stream_handler):
             raise TypeError("stream_handler must be a callable or None.")
+
+        payload = self._build_request_payload(form, stream=bool(stream_handler))
         
-        settings_dict = asdict(self.settings)
-        # Pop keys not used by litellm.completion
-        for key in ["max_retries", "backoff_base", "backoff_jitter"]:
-            settings_dict.pop(key, None)
-
-        completion_kwargs = {
-            **settings_dict,
-            "messages": form.get_messages(),
-            "response_format": form.get_response_format(),
-        }
-
         last_exception = None
         for attempt in range(self.settings.max_retries):
             try:
                 if stream_handler:
-                    completion_kwargs["stream"] = True
-                    response_litellm = completion(**completion_kwargs)
-                    
                     full_content = []
-                    for chunk in response_litellm:
-                        delta = chunk.choices[0].delta.content if chunk.choices[0].delta and chunk.choices[0].delta.content else ""
-                        stream_handler(delta)
-                        full_content.append(delta)
-                    raw_content = "".join(full_content).strip()
+                    with self._client.stream("POST", DEFAULT_COMPLETION_ENDPOINT, json=payload) as response:
+                        response.raise_for_status()
+                        for line in response.iter_lines():
+                            if line.startswith("data:"):
+                                content = line[len("data: "):].strip()
+                                if content == "[DONE]":
+                                    break
+                                chunk = json.loads(content)
+                                delta = chunk["choices"][0]["delta"].get("content", "")
+                                stream_handler(delta)
+                                full_content.append(delta)
+                    raw_content = "".join(full_content)
                 else:
-                    response_litellm = completion(**completion_kwargs)
-                    raw_content = response_litellm.choices[0].message.content.strip()
-
+                    response = self._client.post(DEFAULT_COMPLETION_ENDPOINT, json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    raw_content = data["choices"][0]["message"]["content"]
+                
                 return form.parse_response(raw_content)
 
+            except httpx.HTTPStatusError as e:
+                last_exception = e
+                # For streaming responses, content may not have been read.
+                error_text = e.response.text if not e.response.is_stream_consumed else ""
+                print(f"API request failed with status {e.response.status_code}: {error_text}")
             except Exception as e:
                 last_exception = e
-                if attempt < self.settings.max_retries - 1:
-                    backoff_time = self.settings.backoff_base ** attempt
-                    if self.settings.backoff_jitter:
-                        backoff_time += random.uniform(0, 1)
-                    print(f"Attempt {attempt + 1} failed. Retrying in {backoff_time:.2f} seconds...")
-                    time.sleep(backoff_time)
-                else:
-                    raise MaxRetriesExceededError("Completion failed after all retries.", last_exception)
+                print(f"An unexpected error occurred: {e}")
 
-        raise MaxRetriesExceededError("Completion failed unexpectedly after all retries.", last_exception) 
+            if attempt < self.settings.max_retries - 1:
+                backoff_time = self.settings.backoff_base ** attempt
+                if self.settings.backoff_jitter:
+                    backoff_time += random.uniform(0, 1)
+                print(f"Attempt {attempt + 1}/{self.settings.max_retries} failed. Retrying in {backoff_time:.2f} seconds...")
+                time.sleep(backoff_time)
+
+        raise MaxRetriesExceededError("Completion failed after all retries.", last_exception)
+
+    def _build_request_payload(self, form: CompletionForm, stream: bool) -> Dict[str, Any]:
+        """Builds the request payload dictionary."""
+        payload = {
+            "model": self.settings.model,
+            "messages": form.get_messages(),
+            "temperature": self.settings.temperature,
+            "max_tokens": self.settings.max_tokens,
+            "top_p": self.settings.top_p,
+            "frequency_penalty": self.settings.frequency_penalty,
+            "presence_penalty": self.settings.presence_penalty,
+            "stream": stream,
+        }
+        
+        response_format = form.get_response_format()
+        if response_format:
+            # OpenAI expects `response_format` to be {"type": "json_object"}
+            # for schema-enforced JSON. The schema itself goes in the system prompt.
+            # `CompletionForm` already handles injecting the schema.
+            payload["response_format"] = {"type": "json_object"}
+
+        return payload
+
+    def close(self) -> None:
+        """Closes the underlying httpx client."""
+        self._client.close()
+        
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close() 

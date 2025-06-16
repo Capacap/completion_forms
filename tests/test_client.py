@@ -12,7 +12,7 @@ if not API_KEY:
     pytest.mark.skip("Skipping integration tests, OPENAI_API_KEY not set", allow_module_level=True)
 
 # Use a fast and cheap model for testing
-MODEL = "openai/gpt-4.1-nano" 
+MODEL = "gpt-4.1-nano" 
 
 @pytest.fixture
 def client():
@@ -23,7 +23,9 @@ def client():
         temperature=0.0, # For deterministic results
         max_tokens=150
     )
-    return CompletionClient(settings)
+    client = CompletionClient(settings)
+    yield client
+    client.close()
 
 
 @pytest.fixture
