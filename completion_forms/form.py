@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import pprint
 import string
-from typing import Dict, List, Union
+import re
+from typing import Dict, List, Union, Any
 
 from .exceptions import (
     FormFileNotFoundError,
@@ -13,8 +14,8 @@ from .exceptions import (
     InvalidTemplateError,
     InvalidValueError,
     ReservedKeyError,
+    ResponseParsingError,
 )
-from .request import CompletionRequest
 
 
 class CompletionForm:
@@ -123,43 +124,51 @@ class CompletionForm:
             raise InvalidKeyError(f"Invalid key '{key}'. Valid keys are: {self._keys}")
         self._data[key] = value
 
-    def create_request(self) -> CompletionRequest:
-        """
-        Creates a CompletionRequest object from the populated form data.
+    def get_messages(self) -> List[Dict[str, str]]:
+        """Validates the form data and returns the list of messages for the API."""
+        self._validate_data()
+        return self._build_messages()
 
-        This method validates the form data, builds the necessary API payload
-        (messages and response format), and encapsulates them into a
-        CompletionRequest object that is ready to be sent to the API.
+    def get_response_format(self) -> Dict | None:
+        """Returns the response_format dictionary for the API."""
+        return self._build_response_format()
+
+    def get_response_schema(self) -> Dict:
+        """Returns the response schema part of the original template."""
+        return self._template.get("response", {})
+
+    def get_messages_schema(self) -> Dict[str, str]:
+        """Returns the messages schema part of the original template."""
+        return {
+            role: content
+            for role, content in self._template.items()
+            if role != "response" and isinstance(content, str)
+        }
+
+    def parse_response(self, raw_content: str) -> Dict[str, Any]:
+        """
+        Parses the raw string response from the API.
+
+        This method intelligently handles both JSON and plain text responses
+        based on the form's configuration.
+
+        Args:
+            raw_content: The raw string content returned by the API.
 
         Returns:
-            A CompletionRequest instance containing the formatted request payload
-            and the corresponding response parser.
+            A dictionary containing the parsed data.
 
         Raises:
-            FormValidationError: If not all required keys have been provided or
-                                 if extra, unexpected keys were provided.
+            ResponseParsingError: If parsing fails for any reason.
         """
-        self._validate_data()
+        is_text_response = self.get_response_format() is None
+        if is_text_response:
+            return self._parse_text_response(raw_content)
 
-        messages = self._build_messages()
-        response_template = self._template.get("response", {})
-        response_format = self._build_response_format()
-
-        is_text_response = False
-        if isinstance(response_template, dict):
-            is_text_response = any(
-                isinstance(details, dict) and details.get("type") == "text"
-                for details in response_template.values()
-            )
-
-        template_for_parser = response_template if is_text_response else None
-
-        return CompletionRequest(
-            messages=messages,
-            response_format=response_format,
-            is_text_response=is_text_response,
-            response_template=template_for_parser,
-        )
+        try:
+            return json.loads(raw_content)
+        except json.JSONDecodeError as e:
+            raise ResponseParsingError(f"Failed to decode JSON response: {e}", raw_content)
 
     def pprint_raw(self) -> None:
         """Displays the raw, unformatted user/system messages and response format."""
@@ -194,7 +203,7 @@ class CompletionForm:
         if response_format:
             pprint.pprint(response_format)
         else:
-            pprint.pprint(self._template.get("response", {}))
+            pprint.pprint(self.get_response_schema())
         print()
 
     @property
@@ -285,6 +294,26 @@ class CompletionForm:
                 "content": content.strip()
             })
         return messages
+
+    def _parse_text_response(self, raw_content: str) -> Dict[str, Any]:
+        """Parses a plain text response, extracting thinking and content parts."""
+        response_schema = self.get_response_schema()
+        if not response_schema:
+            raise ResponseParsingError("Cannot parse text response without a response template.", raw_content)
+
+        response_key = next(iter(response_schema.keys()), None)
+        if not response_key:
+            raise ResponseParsingError("Text response template missing a key.", raw_content)
+
+        thinking_match = re.search(r"<think>(.*?)</think>(.*)", raw_content, re.DOTALL)
+
+        parsed_response = {}
+        if thinking_match:
+            parsed_response["thinking"] = thinking_match.group(1).strip()
+            parsed_response[response_key] = thinking_match.group(2).strip()
+        else:
+            parsed_response[response_key] = raw_content.strip()
+        return parsed_response
 
     def _build_response_format(self) -> Dict | None:
         """Constructs the JSON schema for the response format if not a text response."""

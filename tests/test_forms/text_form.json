@@ -1,0 +1,9 @@
+{
+    "system": "Summarize the following text.",
+    "user": "{text_to_summarize}",
+    "response": {
+        "summary": {
+            "type": "text"
+        }
+    }
+} 

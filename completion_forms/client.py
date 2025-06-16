@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Callable, Dict, Optional
 
 from litellm import completion
-from .request import CompletionRequest
+from .form import CompletionForm
 from .exceptions import (
     ClientConfigurationError,
     MaxRetriesExceededError,
@@ -77,7 +77,7 @@ class CompletionClient:
             raise ClientConfigurationError("settings must be an instance of CompletionClientSettings.")
         self.settings = settings
 
-    def complete(self, request: CompletionRequest, stream_handler: Callable[[str], None] | None = None) -> Dict[str, Any]:
+    def complete(self, form: CompletionForm, stream_handler: Callable[[str], None] | None = None) -> Dict[str, Any]:
         """
         Executes a completion request using a formatted CompletionForm.
 
@@ -86,7 +86,7 @@ class CompletionClient:
         both regular and streaming responses.
 
         Args:
-            request: An instance of CompletionRequest containing the payload
+            form: An instance of CompletionForm containing the payload
                      and response parser.
             stream_handler: An optional callable that receives content chunks as
                             they arrive when streaming. If provided, the response
@@ -105,8 +105,8 @@ class CompletionClient:
             ResponseParsingError: If the API response cannot be parsed (e.g.,
                                   invalid JSON).
         """
-        if not isinstance(request, CompletionRequest):
-            raise TypeError("request must be an instance of CompletionRequest.")
+        if not isinstance(form, CompletionForm):
+            raise TypeError("form must be an instance of CompletionForm.")
         if stream_handler is not None and not callable(stream_handler):
             raise TypeError("stream_handler must be a callable or None.")
         
@@ -117,8 +117,8 @@ class CompletionClient:
 
         completion_kwargs = {
             **settings_dict,
-            "messages": request.messages,
-            "response_format": request.response_format,
+            "messages": form.get_messages(),
+            "response_format": form.get_response_format(),
         }
 
         last_exception = None
@@ -138,7 +138,7 @@ class CompletionClient:
                     response_litellm = completion(**completion_kwargs)
                     raw_content = response_litellm.choices[0].message.content.strip()
 
-                return request.parse_response(raw_content)
+                return form.parse_response(raw_content)
 
             except Exception as e:
                 last_exception = e

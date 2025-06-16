@@ -1,0 +1,14 @@
+{
+    "system": "You are a helpful assistant.",
+    "user": "Hello, my name is {name} and I live in {city}.",
+    "response": {
+        "greeting": {
+            "type": "string",
+            "description": "A welcome message."
+        },
+        "location_echo": {
+            "type": "string",
+            "description": "Echo back the city."
+        }
+    }
+} 
