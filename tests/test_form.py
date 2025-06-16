@@ -1,3 +1,5 @@
+"""Tests for the CompletionForm class."""
+
 import os
 import pytest
 import json
@@ -20,6 +22,7 @@ NESTED_FORM_PATH = os.path.join(TEST_FORMS_DIR, "nested_form.json")
 
 @pytest.fixture
 def basic_template():
+    """Provides a basic template for testing."""
     return {
         "system": "You are a helpful assistant.",
         "user": "Hello, my name is {name} and I live in {city}.",
@@ -32,6 +35,7 @@ def basic_template():
 
 @pytest.fixture
 def text_template():
+    """Provides a template for testing text-only responses."""
     return {
         "system": "Summarize the following text.",
         "user": "{text_to_summarize}",
@@ -42,21 +46,23 @@ def text_template():
 
 
 def test_form_instantiation_from_dict(basic_template):
+    """Tests that a form can be created from a dictionary."""
     form = CompletionForm.from_dict(basic_template)
     assert isinstance(form, CompletionForm)
     assert sorted(form.keys) == ["city", "name"]
 
 
 def test_form_instantiation_from_json():
+    """Tests that a form can be created from a JSON file."""
     form = CompletionForm.from_json_file(BASIC_FORM_PATH)
     assert isinstance(form, CompletionForm)
     assert sorted(form.keys) == ["city", "name"]
 
 
 def test_put_and_get_messages(basic_template):
+    """Tests that data can be put into the form and formatted correctly."""
     form = CompletionForm(basic_template)
-    form.put("name", "Alice")
-    form.put("city", "Wonderland")
+    form.put("name", "Alice").put("city", "Wonderland")
     messages = form.get_messages()
     assert len(messages) == 2
     assert messages[0]["role"] == "system"
@@ -65,6 +71,7 @@ def test_put_and_get_messages(basic_template):
 
 
 def test_get_response_format_json(basic_template):
+    """Tests that the correct response format is generated for JSON schemas."""
     form = CompletionForm(basic_template)
     response_format = form.get_response_format()
     assert response_format is not None
@@ -73,11 +80,13 @@ def test_get_response_format_json(basic_template):
 
 
 def test_get_response_format_text(text_template):
+    """Tests that no response format is generated for text-only responses."""
     form = CompletionForm(text_template)
     assert form.get_response_format() is None
 
 
 def test_get_schemas(basic_template):
+    """Tests that the message and response schemas can be retrieved."""
     form = CompletionForm(basic_template)
     response_schema = form.get_response_schema()
     messages_schema = form.get_messages_schema()
@@ -90,6 +99,7 @@ def test_get_schemas(basic_template):
 
 
 def test_parse_json_response(basic_template):
+    """Tests that a valid JSON string is parsed correctly."""
     form = CompletionForm(basic_template)
     raw_response = '{"greeting": "Hello Alice!", "location_echo": "Wonderland"}'
     parsed = form.parse_response(raw_response)
@@ -98,6 +108,7 @@ def test_parse_json_response(basic_template):
 
 
 def test_parse_text_response(text_template):
+    """Tests that a plain text response is parsed correctly."""
     form = CompletionForm(text_template)
     raw_response = "This is a summary."
     parsed = form.parse_response(raw_response)
@@ -105,6 +116,7 @@ def test_parse_text_response(text_template):
 
 
 def test_parse_text_response_with_thinking(text_template):
+    """Tests parsing of a text response containing a <think> block."""
     form = CompletionForm(text_template)
     raw_response = "<think>I am thinking.</think>This is the actual summary."
     parsed = form.parse_response(raw_response)
@@ -113,6 +125,7 @@ def test_parse_text_response_with_thinking(text_template):
 
 
 def test_validation_error_missing_keys(basic_template):
+    """Tests that a validation error is raised for missing keys."""
     form = CompletionForm(basic_template)
     form.put("name", "Alice")
     with pytest.raises(FormValidationError, match="missing keys:.*'city'"):
@@ -120,15 +133,17 @@ def test_validation_error_missing_keys(basic_template):
 
 
 def test_invalid_template_errors():
+    """Tests that appropriate errors are raised for invalid templates."""
     with pytest.raises(InvalidTemplateError, match="must include a 'user' key"):
         CompletionForm({"system": "s", "response": {}})
     with pytest.raises(InvalidTemplateError, match="must include a 'response' key"):
         CompletionForm({"system": "s", "user": "u"})
-    with pytest.raises(ReservedKeyError, match="'thinking' is reserved in the response schema."):
+    with pytest.raises(ReservedKeyError, match="'thinking' is reserved"):
         CompletionForm({"system": "s", "user": "u", "response": {"thinking": {"type":"string"}}})
 
 
 def test_invalid_put_calls(basic_template):
+    """Tests that appropriate errors are raised for invalid `put` calls."""
     form = CompletionForm(basic_template)
     with pytest.raises(InvalidKeyError, match="Invalid key 'badkey'"):
         form.put("badkey", "value")
@@ -136,9 +151,9 @@ def test_invalid_put_calls(basic_template):
         form.put("name", 123)
 
 def test_pprint_methods(basic_template, capsys):
+    """Tests the pretty-printing utility methods."""
     form = CompletionForm(basic_template)
-    form.put("name", "Bob")
-    form.put("city", "Builderland")
+    form.put("name", "Bob").put("city", "Builderland")
     
     # Test raw message printing
     form.pprint_messages(raw=True)
@@ -159,12 +174,12 @@ def test_pprint_methods(basic_template, capsys):
     assert "'greeting':" in captured_response.out
 
 def test_nested_form_from_file():
+    """Tests that a form with a nested schema can be loaded and used."""
     form = CompletionForm.from_json_file(NESTED_FORM_PATH)
     assert "user_profile" in form.get_response_schema()
     assert "aliases" in form.get_response_schema()
 
-    form.put("name", "test_user")
-    form.put("age", "99")
+    form.put("name", "test_user").put("age", "99")
     messages = form.get_messages()
     assert "Process my profile information." in messages[1]['content']
     assert "test_user" not in messages[1]['content']

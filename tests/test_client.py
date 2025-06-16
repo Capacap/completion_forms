@@ -1,3 +1,5 @@
+"""Integration tests for the CompletionClient."""
+
 import pytest
 import os
 from completion_forms import CompletionClient, CompletionClientSettings, CompletionForm

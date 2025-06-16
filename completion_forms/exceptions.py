@@ -1,3 +1,5 @@
+"""Custom exceptions for the completion_forms library."""
+
 class CompletionFormError(Exception):
     """Base exception for all errors raised by the completion_forms library."""
 
@@ -42,12 +44,12 @@ class CompletionError(ClientError):
 
 class MaxRetriesExceededError(CompletionError):
     """Raised when the completion request fails after all retries."""
-    def __init__(self, message: str, last_exception: Exception):
-        super().__init__(f"{message}\nLast exception: {last_exception}")
+    def __init__(self, message: str, last_exception: Exception | None):
         self.last_exception = last_exception
+        super().__init__(f"{message}\nLast exception: {last_exception}")
 
 class ResponseParsingError(CompletionError):
     """Raised when the response from the completion API cannot be parsed."""
     def __init__(self, message: str, raw_content: str | None):
-        super().__init__(f"{message}\nRaw content: '{raw_content}'")
-        self.raw_content = raw_content 
+        self.raw_content = raw_content
+        super().__init__(f"{message}\nRaw content: '{raw_content}'") 
