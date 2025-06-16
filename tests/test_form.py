@@ -124,7 +124,7 @@ def test_invalid_template_errors():
         CompletionForm({"system": "s", "response": {}})
     with pytest.raises(InvalidTemplateError, match="must include a 'response' key"):
         CompletionForm({"system": "s", "user": "u"})
-    with pytest.raises(ReservedKeyError, match="The key 'thinking' is reserved"):
+    with pytest.raises(ReservedKeyError, match="'thinking' is reserved in the response schema."):
         CompletionForm({"system": "s", "user": "u", "response": {"thinking": {"type":"string"}}})
 
 
@@ -140,15 +140,23 @@ def test_pprint_methods(basic_template, capsys):
     form.put("name", "Bob")
     form.put("city", "Builderland")
     
-    form.pprint_raw()
+    # Test raw message printing
+    form.pprint_messages(raw=True)
     captured_raw = capsys.readouterr()
-    assert "--- Raw Request ---" in captured_raw.out
+    assert "--- Raw Messages ---" in captured_raw.out
     assert "Hello, my name is {name} and I live in {city}." in captured_raw.out
     
-    form.pprint_formatted()
+    # Test formatted message printing
+    form.pprint_messages(raw=False)
     captured_formatted = capsys.readouterr()
-    assert "--- Formatted Request ---" in captured_formatted.out
+    assert "--- Formatted Messages ---" in captured_formatted.out
     assert "Hello, my name is Bob and I live in Builderland." in captured_formatted.out
+
+    # Test response format printing
+    form.pprint_response_format()
+    captured_response = capsys.readouterr()
+    assert "--- Response Format ---" in captured_response.out
+    assert "'greeting':" in captured_response.out
 
 def test_nested_form_from_file():
     form = CompletionForm.from_json_file(NESTED_FORM_PATH)
