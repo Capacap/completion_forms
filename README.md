@@ -16,7 +16,17 @@ pip install .
 pip install -e .
 ```
 
-## Core Concepts
+## Key Features
+
+*   **API Agnostic by Design**: While a convenient `CompletionClient` is included, the core `CompletionForm` is completely decoupled. Use `.get_messages()` and `.get_response_format()` to generate the exact payloads needed for any API client, including `anthropic`, `google-generativeai`, `cohere`, or your own custom solution. This gives you maximum flexibility to switch between model providers without rewriting your prompt logic.
+
+*   **Single-File Prompt Management**: Define everything in one place. Each form, which can be a simple Python dictionary or a standalone `.json` file, encapsulates:
+    *   The `system` prompt (the LLM's instructions).
+    *   The `user` prompt template with placeholder `{keys}`.
+    *   The complete `response` schema, defining the structure, types, and descriptions of the data you want back.
+    *   This unified approach makes prompts self-documenting, easy to version control, and simple to share or reuse across a project.
+
+## Core Components
 
 The library is built around two main classes:
 
